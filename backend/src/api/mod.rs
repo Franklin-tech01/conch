@@ -10,6 +10,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+use crate::auth;
 use crate::db;
 use crate::state::AppState;
 
@@ -43,22 +44,92 @@ pub fn error_response(message: &str, status: StatusCode) -> (StatusCode, Json<se
 /// `None` when the request is unauthenticated.  **Do not** rely on the string
 /// "anonymous" in application logic – authentication is required for many
 /// operations and unwrapped values should be handled explicitly.
+/// Extract identity from the X-Public-Key header.
+/// The public key IS the identity — no accounts, no sessions.
 fn get_current_user(headers: &axum::http::HeaderMap) -> Option<String> {
-    // Try to get token from Authorization header
-    if let Some(auth_header) = headers.get(header::AUTHORIZATION) {
-        if let Ok(auth_str) = auth_header.to_str() {
-            if auth_str.starts_with("Bearer ") {
-                let token = &auth_str[7..];
-                // In production: validate JWT and extract username
-                // For now we treat the raw token as the username placeholder
-                if !token.is_empty() {
-                    // TODO: Replace with proper JWT validation
-                    return Some(token.to_string());
-                }
-            }
-        }
+    headers
+        .get("X-Public-Key")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string())
+}
+
+/// Register request body
+#[derive(Deserialize)]
+pub struct RegisterBody {
+    pub username: String,
+    pub email: String,
+    pub password: String,
+}
+
+/// Login request body
+#[derive(Deserialize)]
+pub struct LoginBody {
+    pub email: String,
+    pub password: String,
+}
+
+/// POST /api/auth/register
+pub async fn register_user(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<RegisterBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    if payload.username.trim().is_empty() || payload.email.trim().is_empty() || payload.password.len() < 6 {
+        return Err(error_response("Username, email and password (min 6 chars) are required", StatusCode::BAD_REQUEST));
     }
-    None
+
+    match db::get_user_by_email(&state.db, &payload.email).await {
+        Ok(Some(_)) => return Err(error_response("Email already registered", StatusCode::CONFLICT)),
+        Err(e) => return Err(error_response(&format!("Database error: {}", e), StatusCode::INTERNAL_SERVER_ERROR)),
+        Ok(None) => {}
+    }
+
+    let password_hash = auth::hash_password(&payload.password);
+
+    let user_id = db::create_user(&state.db, &payload.username, &payload.email, &password_hash)
+        .await
+        .map_err(|e| {
+            if e.to_string().contains("unique") || e.to_string().contains("duplicate") {
+                error_response("Username already taken", StatusCode::CONFLICT)
+            } else {
+                error_response(&format!("Failed to create user: {}", e), StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        })?;
+
+    let token = auth::generate_token(&user_id, &payload.username, &payload.email)
+        .map_err(|e| error_response(&format!("Token error: {}", e), StatusCode::INTERNAL_SERVER_ERROR))?;
+
+    Ok(success_response(serde_json::json!({
+        "token": token,
+        "user": { "id": user_id, "username": payload.username, "email": payload.email }
+    })))
+}
+
+/// POST /api/auth/login
+pub async fn login_user(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<LoginBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let user = db::get_user_by_email(&state.db, &payload.email)
+        .await
+        .map_err(|e| error_response(&format!("Database error: {}", e), StatusCode::INTERNAL_SERVER_ERROR))?
+        .ok_or_else(|| error_response("Invalid email or password", StatusCode::UNAUTHORIZED))?;
+
+    let password_hash = user["password_hash"].as_str().unwrap_or("");
+    if !auth::verify_password(&payload.password, password_hash) {
+        return Err(error_response("Invalid email or password", StatusCode::UNAUTHORIZED));
+    }
+
+    let user_id = user["id"].as_str().unwrap_or("");
+    let username = user["username"].as_str().unwrap_or("");
+    let email = user["email"].as_str().unwrap_or("");
+
+    let token = auth::generate_token(user_id, username, email)
+        .map_err(|e| error_response(&format!("Token error: {}", e), StatusCode::INTERNAL_SERVER_ERROR))?;
+
+    Ok(success_response(serde_json::json!({
+        "token": token,
+        "user": { "id": user_id, "username": username, "email": email }
+    })))
 }
 
 /// Helper wrapper used inside handlers to short-circuit with a 401 error when
@@ -122,12 +193,12 @@ pub async fn create_conch(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let state_ref = state.as_ref();
 
-    // determine the owner: prefer explicit owner in request, otherwise use
-    // authenticated user.  If neither is available we return 401.
+    // determine the owner: prefer explicit owner in request, then authenticated
+    // user, then fall back to "anonymous" so unauthenticated users can still create.
     let owner = if let Some(o) = payload.owner.clone() {
         o
     } else {
-        require_user(&headers)?
+        require_user(&headers).unwrap_or_else(|_| "anonymous".to_string())
     };
 
     let state_json = payload.state.unwrap_or(serde_json::json!({}));

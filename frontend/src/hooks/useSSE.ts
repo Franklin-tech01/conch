@@ -16,9 +16,9 @@ export function useSSE() {
     }
 
     const token = localStorage.getItem('conch_token')
-    const url = token 
-      ? `${API_BASE}/events?token=${token}`
-      : `${API_BASE}/events`
+    const url = token
+      ? `/events?token=${token}`
+      : `/events`
 
     const eventSource = new EventSource(url)
     eventSourceRef.current = eventSource

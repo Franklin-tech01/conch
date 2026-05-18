@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useConchStore } from '../lib/store'
 import { fetchNotifications } from '../lib/api'
+import { shortKey } from '../lib/wallet'
 import type { Notification } from '../lib/types'
 import './Navbar.css'
 
@@ -49,7 +50,7 @@ interface NavbarProps {
 
 export default function Navbar({ wsConnected }: NavbarProps) {
   const location = useLocation()
-  const { theme, toggleTheme } = useConchStore()
+  const { theme, toggleTheme, wallet } = useConchStore()
   const [showNotifications, setShowNotifications] = useState(false)
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [loading, setLoading] = useState(true)
@@ -216,17 +217,25 @@ export default function Navbar({ wsConnected }: NavbarProps) {
             )}
           </div>
           
-          {/* Profile Link */}
-          <Link 
-            to="/profile" 
-            className={`nav-link profile-link ${isActive('/profile') ? 'active' : ''}`}
-            title="Profile & Settings"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="20" height="20">
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-              <circle cx="12" cy="7" r="4"/>
-            </svg>
-          </Link>
+          {/* Wallet identity */}
+          {wallet ? (
+            <Link
+              to="/wallet"
+              className={`nav-link ${isActive('/wallet') ? 'active' : ''}`}
+              title="Your wallet"
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontFamily: 'monospace' }}
+            >
+              <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: `hsl(${parseInt(wallet.publicKey.slice(0,4), 16) % 360}, 60%, 50%)`, flexShrink: 0 }} />
+              {wallet.displayName !== 'Anonymous' ? wallet.displayName : shortKey(wallet.publicKey)}
+            </Link>
+          ) : (
+            <Link
+              to="/wallet"
+              style={{ padding: '8px 16px', background: 'var(--color-primary)', color: 'white', borderRadius: 'var(--radius-lg)', fontSize: '14px', fontWeight: 500, textDecoration: 'none' }}
+            >
+              Get a key
+            </Link>
+          )}
           
           {/* Theme Toggle Button */}
           <button 

@@ -41,7 +41,7 @@ services:
       dockerfile: Dockerfile
     container_name: conch-api
     ports:
-      - "3000:3000"
+      - "3001:3000"
     environment:
       DATABASE_URL: postgres://conch:conch@postgres:5432/conch
       REDIS_URL: redis://redis:6379

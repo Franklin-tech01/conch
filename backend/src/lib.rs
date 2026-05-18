@@ -2,6 +2,7 @@
 // A mythic, modern landing portal and real-time Conch memory system
 
 pub mod api;
+pub mod auth;
 pub mod db;
 pub mod events;
 pub mod models;

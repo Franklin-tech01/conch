@@ -1,13 +1,9 @@
-// Authentication module - JWT and Ed25519 signing
+// Authentication module - JWT and password hashing
 
-use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, TokenData, Validation};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
-
-use crate::db::repo::UserRepository;
-use crate::models::{ApiResponse, LoginRequest, RegisterRequest, TokenResponse, UserResponse};
 
 const JWT_SECRET: &str = "conch-secret-key-change-in-production";
 const JWT_EXPIRATION: i64 = 86400 * 7; // 7 days
@@ -90,73 +86,4 @@ pub fn verify_conch_signature(id: Uuid, state: &serde_json::Value, story: &str, 
     expected == signature
 }
 
-/// Register a new user
-pub async fn register(
-    pool: &sqlx::Pool<sqlx::Postgres>,
-    req: RegisterRequest,
-) -> Result<ApiResponse<TokenResponse>, String> {
-    let repo = UserRepository::new(pool);
-
-    // Check if user already exists
-    if repo.get_by_email(&req.email).await.map_err(|e| e.to_string())?.is_some() {
-        return Ok(ApiResponse::error("User already exists".to_string()));
-    }
-
-    // Hash password
-    let password_hash = hash_password(&req.password);
-
-    // Create user
-    let user_id: String = repo
-        .create(&req.username, &req.email, &password_hash)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    // Generate token
-    let token = generate_token(&user_id, &req.username, &req.email)
-        .map_err(|e| e.to_string())?;
-
-    Ok(ApiResponse::success(TokenResponse {
-        token,
-        user: UserResponse {
-            id: user_id,
-            username: req.username,
-            email: req.email,
-            public_key: None,
-        },
-    }))
-}
-
-/// Login user
-pub async fn login(
-    pool: &sqlx::Pool<sqlx::Postgres>,
-    req: LoginRequest,
-) -> Result<ApiResponse<TokenResponse>, String> {
-    let repo = UserRepository::new(pool);
-
-    // Get user by email
-    let user = repo
-        .get_by_email(&req.email)
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or("Invalid credentials")?;
-
-    // Verify password
-    if !verify_password(&req.password, &user.password_hash) {
-        return Ok(ApiResponse::error("Invalid credentials".to_string()));
-    }
-
-    // Generate token
-    let token = generate_token(&user.id, &user.username, &user.email)
-        .map_err(|e| e.to_string())?;
-
-    Ok(ApiResponse::success(TokenResponse {
-        token,
-        user: UserResponse {
-            id: user.id,
-            username: user.username,
-            email: user.email,
-            public_key: user.public_key,
-        },
-    }))
-}
 

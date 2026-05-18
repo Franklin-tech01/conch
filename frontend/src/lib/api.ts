@@ -1,9 +1,8 @@
 // CONCH Platform - API Client
 
-import type { 
-  Conch, 
-  ConchGraph, 
-  TokenResponse,
+import type {
+  Conch,
+  ConchGraph,
   CreateConchRequest,
   UpdateConchRequest,
   ConchLink,
@@ -11,6 +10,7 @@ import type {
   NotificationPreferences,
   Comment,
 } from './types'
+import { loadWallet } from './wallet'
 
 const API_BASE = import.meta.env?.VITE_API_URL || '/api'
 
@@ -41,26 +41,11 @@ const MOCK_CONCHES: Conch[] = [
 
 // Helper for making requests
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  // Check if we should use mock data (when backend is not available)
-  const shouldUseMock = IS_DEVELOPMENT || API_BASE === '/api' // Relative URL means backend not configured
-  
-  if (shouldUseMock) {
-    console.log(`[MOCK] API call to ${endpoint}`)
-    // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 500))
-    
-    if (endpoint === '/conches' || endpoint.startsWith('/conches?')) {
-      return MOCK_CONCHES as T
-    }
-    // For other endpoints, return empty data
-    return [] as T
-  }
+  const wallet = loadWallet()
 
-  const token = localStorage.getItem('conch_token')
-  
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
-    ...(token && { Authorization: `Bearer ${token}` }),
+    ...(wallet && { 'X-Public-Key': wallet.publicKey }),
     ...options.headers,
   }
 
@@ -150,6 +135,7 @@ export async function fetchConches(page = 1, pageSize = 20): Promise<Conch[]> {
     return []
   }
 }
+
 
 export async function fetchConch(id: string): Promise<Conch | null> {
   try {

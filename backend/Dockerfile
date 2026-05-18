@@ -1,5 +1,5 @@
 # CONCH Platform - Rust Backend Dockerfile
-FROM rust:1.75 AS builder
+FROM rust:1.88 AS builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
@@ -16,16 +16,15 @@ RUN rustup update
 
 # Copy Cargo files
 COPY Cargo.toml Cargo.lock ./
-COPY src ./src
 
 # Build dependencies first (for caching)
-RUN mkdir src && echo "fn main() {}" > src/main.rs
+RUN mkdir src && echo "fn main() {}" > src/main.rs && echo "" > src/lib.rs
 RUN cargo build --release
 RUN rm -rf src
 
-# Copy source and rebuild
+# Copy source and rebuild (touch forces Cargo to recompile)
 COPY src ./src
-RUN cargo build --release
+RUN touch src/main.rs src/lib.rs && cargo build --release
 
 # Production image
 FROM debian:bookworm-slim
@@ -42,17 +41,8 @@ RUN useradd -m -u 1000 conch
 # Copy binary
 COPY --from=builder /app/target/release/conch-server /usr/local/bin/conch-server
 
-# Copy migrations
-COPY --from=builder /app/migrations /app/migrations
-
-# Set ownership
-RUN chown -R conch:conch /app
-
 # Switch to non-root user
 USER conch
-
-# Set working directory
-WORKDIR /app
 
 # Expose port
 EXPOSE 3000

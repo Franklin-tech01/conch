@@ -18,6 +18,7 @@ import ProfilePage from './pages/ProfilePage'
 import DashboardPage from './pages/DashboardPage'
 import ExplorePage from './pages/ExplorePage'
 import CollaborationHub from './pages/CollaborationHub'
+import WalletPage from './pages/WalletPage'
 
 // Store
 import { useConchStore } from './lib/store'
@@ -52,7 +53,7 @@ function App() {
 
   // SSE connection for real-time updates
   useEffect(() => {
-    const eventSource = new EventSource('/api/events')
+    const eventSource = new EventSource('/events')
 
     eventSource.onopen = () => {
       console.log('SSE connected')
@@ -100,7 +101,7 @@ function App() {
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/explore" element={<ExplorePage />} />
             <Route path="/collaborate" element={<CollaborationHub />} />
-            {/* fallback to prevent client-side 404s when deploying to static hosts */}
+            <Route path="/wallet" element={<WalletPage />} />
             <Route path="*" element={<LandingPage />} />
           </Routes>
         </AnimatePresence>

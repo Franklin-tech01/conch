@@ -3,6 +3,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Conch, ConchEvent } from './types'
+import type { Wallet } from './wallet'
 
 interface ConchState {
   // Conches
@@ -10,18 +11,17 @@ interface ConchState {
   selectedConch: Conch | null
   loading: boolean
   error: string | null
-  
+
   // Real-time events
   events: ConchEvent[]
   maxEvents: number
-  
-  // Auth
-  token: string | null
-  user: { id: string; username: string; email: string } | null
-  
+
+  // Identity — keypair wallet, no server accounts
+  wallet: Wallet | null
+
   // Theme
   theme: 'dark' | 'light'
-  
+
   // Actions
   setConches: (conches: Conch[]) => void
   addConch: (conch: Conch) => void
@@ -30,15 +30,14 @@ interface ConchState {
   setSelectedConch: (conch: Conch | null) => void
   setLoading: (loading: boolean) => void
   setError: (error: string | null) => void
-  
+
   // Events
   addEvent: (event: ConchEvent) => void
   clearEvents: () => void
-  
-  // Auth
-  setToken: (token: string | null) => void
-  setUser: (user: { id: string; username: string; email: string } | null) => void
-  
+
+  // Wallet
+  setWallet: (wallet: Wallet | null) => void
+
   // Theme
   setTheme: (theme: 'dark' | 'light') => void
   toggleTheme: () => void
@@ -54,8 +53,7 @@ export const useConchStore = create<ConchState>()(
       error: null,
       events: [],
       maxEvents: 50,
-      token: localStorage.getItem('conch_token'),
-      user: null,
+      wallet: null,
       theme: 'dark',
       
       // Conch actions
@@ -87,17 +85,8 @@ export const useConchStore = create<ConchState>()(
       
       clearEvents: () => set({ events: [] }),
       
-      // Auth actions
-      setToken: (token) => {
-        if (token) {
-          localStorage.setItem('conch_token', token)
-        } else {
-          localStorage.removeItem('conch_token')
-        }
-        set({ token })
-      },
-      
-      setUser: (user) => set({ user }),
+      // Wallet actions
+      setWallet: (wallet) => set({ wallet }),
       
       // Theme actions
       setTheme: (theme) => {
@@ -113,9 +102,9 @@ export const useConchStore = create<ConchState>()(
     }),
     {
       name: 'conch-storage',
-      partialize: (state) => ({ 
+      partialize: (state) => ({
         theme: state.theme,
-        token: state.token 
+        wallet: state.wallet,
       }),
     }
   )

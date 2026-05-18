@@ -987,9 +987,9 @@ pub async fn search_conches(
     }
     
     sql.push_str(&format!(" LIMIT {} OFFSET {}", page_size, offset));
-    
+
     let rows = sqlx::query(&sql).fetch_all(pool).await?;
-    
+
     let conches: Vec<serde_json::Value> = rows.into_iter().map(|row| {
         serde_json::json!({
             "id": row.get::<uuid::Uuid, _>("id"),
@@ -1005,6 +1005,55 @@ pub async fn search_conches(
             "updated_at": row.get::<chrono::DateTime<chrono::Utc>, _>("updated_at").to_rfc3339(),
         })
     }).collect();
-    
+
     Ok(conches)
+}
+
+/// Get a user by email
+pub async fn get_user_by_email(pool: &DbPool, email: &str) -> Result<Option<serde_json::Value>, sqlx::Error> {
+    let row = sqlx::query(
+        "SELECT id::text as id, username, email, password_hash, public_key FROM users WHERE email = $1"
+    )
+    .bind(email)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(row.map(|r| serde_json::json!({
+        "id": r.get::<String, _>("id"),
+        "username": r.get::<String, _>("username"),
+        "email": r.get::<String, _>("email"),
+        "password_hash": r.get::<String, _>("password_hash"),
+        "public_key": r.try_get::<Option<String>, _>("public_key").ok().flatten(),
+    })))
+}
+
+/// Get a user by username
+pub async fn get_user_by_username(pool: &DbPool, username: &str) -> Result<Option<serde_json::Value>, sqlx::Error> {
+    let row = sqlx::query(
+        "SELECT id::text as id, username, email, password_hash, public_key FROM users WHERE username = $1"
+    )
+    .bind(username)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(row.map(|r| serde_json::json!({
+        "id": r.get::<String, _>("id"),
+        "username": r.get::<String, _>("username"),
+        "email": r.get::<String, _>("email"),
+        "public_key": r.try_get::<Option<String>, _>("public_key").ok().flatten(),
+    })))
+}
+
+/// Create a new user, returns the new user's UUID as a string
+pub async fn create_user(pool: &DbPool, username: &str, email: &str, password_hash: &str) -> Result<String, sqlx::Error> {
+    let row = sqlx::query(
+        "INSERT INTO users (username, email, password_hash) VALUES ($1, $2, $3) RETURNING id::text as id"
+    )
+    .bind(username)
+    .bind(email)
+    .bind(password_hash)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(row.get::<String, _>("id"))
 }
