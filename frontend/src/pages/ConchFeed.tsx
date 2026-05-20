@@ -8,6 +8,7 @@ import { fetchConches } from '../lib/api'
 import { useSSE } from '../hooks/useSSE'
 import { GridSkeleton } from '../components/Loader'
 import type { Conch } from '../lib/types'
+import { shortKey } from '../lib/wallet'
 
 // AI Sparkle icon
 const SparkleIcon = () => (
@@ -266,7 +267,9 @@ export default function ConchFeed() {
                 <Link to={`/conch/${conch.id}`} className="conch-card">
                   <div className="conch-card-header">
                     <span className="era-badge">Era {conch.era}</span>
-                    <span className="owner">{conch.owner}</span>
+                    <span className="owner" title={conch.owner}>
+                      {conch.owner && conch.owner.length > 16 ? shortKey(conch.owner) : conch.owner}
+                    </span>
                   </div>
                   <h3 className="conch-story">
                     {conch.intent || conch.story?.substring(0, 50) || 'Untitled'}
@@ -543,7 +546,12 @@ export default function ConchFeed() {
         
         .owner {
           color: var(--color-text-muted);
-          font-size: 14px;
+          font-size: 13px;
+          font-family: monospace;
+          max-width: 140px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
         
         .conch-story {

@@ -7,6 +7,7 @@ import { useConchStore } from '../lib/store'
 import { fetchConches } from '../lib/api'
 import { useSSE } from '../hooks/useSSE'
 import Loader from '../components/Loader'
+import { shortKey } from '../lib/wallet'
 
 // Icons
 const TrendingIcon = () => (
@@ -231,7 +232,9 @@ export default function DashboardPage() {
                           <div className="feed-item-avatar">{conch.owner[0]?.toUpperCase() || 'U'}</div>
                           <div className="feed-item-content">
                             <span className="feed-item-title">{conch.intent || 'Untitled'}</span>
-                            <span className="feed-item-meta">by {conch.owner}</span>
+                            <span className="feed-item-meta" title={conch.owner}>
+                              by {conch.owner && conch.owner.length > 16 ? shortKey(conch.owner) : conch.owner}
+                            </span>
                           </div>
                         </Link>
                       )) : (

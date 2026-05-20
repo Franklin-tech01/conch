@@ -21,7 +21,7 @@ export default function WalletPage() {
       saveWallet(w)
       setWallet(w)
     } catch (e) {
-      setError('Failed to generate keypair')
+      setError(`Failed to generate keypair: ${e instanceof Error ? e.message : String(e)}`)
     } finally {
       setGenerating(false)
     }

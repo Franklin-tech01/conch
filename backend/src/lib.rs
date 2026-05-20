@@ -3,6 +3,7 @@
 
 pub mod api;
 pub mod auth;
+pub mod conch;
 pub mod db;
 pub mod events;
 pub mod models;

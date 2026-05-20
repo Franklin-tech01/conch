@@ -1,574 +1,273 @@
-// CONCH Platform - Create Conch Page
+// CONCH Platform - Create Conch Page (Milestone 1: structured .conch format)
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { createConch, searchTags } from '../lib/api'
+import { newConch, validateConch, createConch, type ConchObject, type ValidationResult } from '../lib/api'
 import { useConchStore } from '../lib/store'
-import { useSSE } from '../hooks/useSSE'
 
-// Rich text editor icons
-const BoldIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16">
-    <path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/>
-  </svg>
-)
-
-const ItalicIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16">
-    <line x1="19" y1="4" x2="10" y2="4"/><line x1="14" y1="20" x2="5" y2="20"/><line x1="15" y1="4" x2="9" y2="20"/>
-  </svg>
-)
-
-const ListIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16">
-    <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
-  </svg>
-)
-
-const LinkIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16">
-    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
-  </svg>
-)
+const CONCH_TYPES = ['memory', 'knowledge', 'wisdom', 'artifact'] as const
 
 export default function CreateConch() {
   const navigate = useNavigate()
-  const { addConch } = useConchStore()
-  const [loading, setLoading] = useState(false)
+  const { addConch, wallet } = useConchStore()
+
+  const [title, setTitle] = useState('')
+  const [body, setBody] = useState('')
+  const [tags, setTags] = useState('')
+  const [conchType, setConchType] = useState<typeof CONCH_TYPES[number]>('memory')
+  const [showPreview, setShowPreview] = useState(false)
+
+  const [preview, setPreview] = useState<ConchObject | null>(null)
+  const [validation, setValidation] = useState<ValidationResult | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+
+  const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [tagQuery, setTagQuery] = useState('')
-  const [tagSuggestions, setTagSuggestions] = useState<string[]>([])
-  const [showSuggestions, setShowSuggestions] = useState(false)
-  const tagInputRef = useRef<HTMLInputElement>(null)
-  
-  // Connect to SSE for real-time updates
-  useSSE()
-  
-  const [formData, setFormData] = useState({
-    story: '',
-    intent: '',
-    stateType: 'memory',
-    tags: [] as string[]
-  })
 
-  // Search tags on input
+  const creator = wallet?.publicKey ?? 'anonymous'
+
+  const buildPayload = useCallback(() => ({
+    fields: [
+      { name: 'title', type: 'string' as const, required: true, description: 'Human-readable title' },
+      { name: 'body', type: 'string' as const, required: true, description: 'Main content' },
+      { name: 'tags', type: 'array' as const, required: false, description: 'Topic tags' },
+      { name: 'type', type: 'string' as const, required: false, description: 'Conch category' },
+    ],
+    data: {
+      title,
+      body,
+      tags: tags.split(',').map(t => t.trim()).filter(Boolean),
+      type: conchType,
+    },
+  }), [title, body, tags, conchType])
+
+  // Live preview: rebuild the ConchObject whenever form values change
   useEffect(() => {
-    const searchTagsDebounced = setTimeout(async () => {
-      if (tagQuery.length >= 2) {
-        try {
-          const tags = await searchTags(tagQuery, 5)
-          setTagSuggestions(tags.map(t => t.name).filter(t => !formData.tags.includes(t)))
-          setShowSuggestions(true)
-        } catch (e) {
-          console.warn('Tag search failed:', e)
-        }
-      } else {
-        setTagSuggestions([])
-        setShowSuggestions(false)
+    if (!title && !body) {
+      setPreview(null)
+      setValidation(null)
+      return
+    }
+    const timeout = setTimeout(async () => {
+      setPreviewLoading(true)
+      try {
+        const { fields, data } = buildPayload()
+        const obj = await newConch(creator, fields, data)
+        setPreview(obj)
+        const result = await validateConch(JSON.stringify(obj))
+        setValidation(result)
+      } catch {
+        setPreview(null)
+        setValidation(null)
+      } finally {
+        setPreviewLoading(false)
       }
-    }, 300)
-    
-    return () => clearTimeout(searchTagsDebounced)
-  }, [tagQuery, formData.tags])
-
-  // Add tag
-  const addTag = (tag: string) => {
-    const trimmed = tag.trim().toLowerCase()
-    if (trimmed && !formData.tags.includes(trimmed)) {
-      setFormData(prev => ({ ...prev, tags: [...prev.tags, trimmed] }))
-    }
-    setTagQuery('')
-    setShowSuggestions(false)
-  }
-
-  // Remove tag
-  const removeTag = (tag: string) => {
-    setFormData(prev => ({ ...prev, tags: prev.tags.filter(t => t !== tag) }))
-  }
-
-  // Rich text formatting
-  const formatText = (format: string) => {
-    const textarea = document.getElementById('story') as HTMLTextAreaElement
-    if (!textarea) return
-    
-    const start = textarea.selectionStart
-    const end = textarea.selectionEnd
-    const selectedText = formData.story.substring(start, end)
-    
-    let formattedText = ''
-    switch (format) {
-      case 'bold':
-        formattedText = '**' + selectedText + '**'
-        break
-      case 'italic':
-        formattedText = '*' + selectedText + '*'
-        break
-      case 'list':
-        formattedText = '\n- ' + selectedText
-        break
-      case 'link':
-        formattedText = '[' + selectedText + '](url)'
-        break
-      default:
-        formattedText = selectedText
-    }
-    
-    const newStory = formData.story.substring(0, start) + formattedText + formData.story.substring(end)
-    setFormData({ ...formData, story: newStory })
-  }
+    }, 500)
+    return () => clearTimeout(timeout)
+  }, [title, body, tags, conchType, creator, buildPayload])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoading(true)
+    if (!title.trim() || !body.trim()) {
+      setError('Title and body are required.')
+      return
+    }
+    setSubmitting(true)
     setError(null)
-
     try {
-      const state = { type: formData.stateType }
-      const newConch = await createConch({
-        state,
-        story: formData.story,
-        intent: formData.intent,
+      const { fields, data } = buildPayload()
+      const obj = await newConch(creator, fields, data)
+
+      // Persist: store the full ConchObject as the `state` field in the DB
+      const saved = await createConch({
+        state: obj as unknown as Record<string, unknown>,
+        story: title,
+        intent: conchType,
+        owner: creator,
       })
-      
-      if (!newConch) {
-        throw new Error('Failed to create Conch - no response from server')
-      }
-      
-      addConch(newConch)
-      navigate(`/conch/${newConch.id}`)
+
+      if (!saved) throw new Error('No response from server')
+      addConch(saved)
+      navigate(`/conch/${saved.id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create Conch')
     } finally {
-      setLoading(false)
+      setSubmitting(false)
     }
   }
 
   return (
-    <div className="create-page">
-      <div className="container">
-        <header className="page-header">
-          <h1>Create a Conch</h1>
-          <p className="text-muted">Forge a new memory in the spiral</p>
-        </header>
+    <div style={{ minHeight: '100vh', paddingTop: '80px', paddingBottom: '60px' }}>
+      <div style={{ maxWidth: '760px', margin: '0 auto', padding: '0 20px' }}>
 
-        <form onSubmit={handleSubmit} className="create-form">
-          {error && (
-            <div className="error-message">
-              <span>!</span>
-              <p>{error}</p>
-            </div>
-          )}
-          
-          <div className="form-group">
-            <label htmlFor="story">Story</label>
-            <div className="rich-text-toolbar">
-              <button type="button" className="toolbar-btn" onClick={() => formatText('bold')} title="Bold">
-                <BoldIcon />
-              </button>
-              <button type="button" className="toolbar-btn" onClick={() => formatText('italic')} title="Italic">
-                <ItalicIcon />
-              </button>
-              <button type="button" className="toolbar-btn" onClick={() => formatText('list')} title="List">
-                <ListIcon />
-              </button>
-              <button type="button" className="toolbar-btn" onClick={() => formatText('link')} title="Link">
-                <LinkIcon />
-              </button>
-            </div>
-            <textarea
-              id="story"
-              className="input textarea"
-              value={formData.story}
-              onChange={(e) => setFormData({ ...formData, story: e.target.value })}
-              placeholder="Tell the story of this Conch... (Supports **bold**, *italic*, - lists, [links](url))"
-              required
-              rows={8}
-            />
-            <span className="form-hint">The narrative and content of your Conch. Use toolbar for formatting.</span>
+        <div style={{ marginBottom: '32px' }}>
+          <h1 style={{ fontSize: '2rem', marginBottom: '8px' }}>Create a Conch</h1>
+          <p style={{ color: 'var(--color-text-muted)', fontSize: '15px' }}>
+            Forge a new structured memory in the spiral
+          </p>
+        </div>
+
+        {error && (
+          <div style={{ padding: '12px 16px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 'var(--radius-lg)', color: '#ef4444', fontSize: '14px', marginBottom: '20px' }}>
+            {error}
           </div>
+        )}
 
-          <div className="form-group">
-            <label htmlFor="intent">Intent</label>
-            <input
-              id="intent"
-              type="text"
-              className="input"
-              value={formData.intent}
-              onChange={(e) => setFormData({ ...formData, intent: e.target.value })}
-              placeholder="What is the purpose of this Conch?"
-              required
-            />
-            <span className="form-hint">A brief summary of the Conch's purpose</span>
-          </div>
+        <div style={{ display: 'grid', gridTemplateColumns: showPreview ? '1fr 1fr' : '1fr', gap: '24px', alignItems: 'start' }}>
 
-          <div className="form-group">
-            <label>Tags</label>
-            <div className="tags-input-container">
-              <div className="tags-list">
-                {formData.tags.map(tag => (
-                  <span key={tag} className="tag">
-                    {tag}
-                    <button type="button" className="tag-remove" onClick={() => removeTag(tag)}>x</button>
-                  </span>
-                ))}
-              </div>
-              <div className="tag-input-wrapper">
+          {/* Form */}
+          <form onSubmit={handleSubmit}>
+            <div style={fieldGroup}>
+              <label style={labelStyle}>Title <span style={{ color: '#ef4444' }}>*</span></label>
+              <input
+                type="text"
+                value={title}
+                onChange={e => setTitle(e.target.value)}
+                placeholder="What is this memory about?"
+                required
+                style={inputStyle}
+              />
+            </div>
+
+            <div style={fieldGroup}>
+              <label style={labelStyle}>Body <span style={{ color: '#ef4444' }}>*</span></label>
+              <textarea
+                value={body}
+                onChange={e => setBody(e.target.value)}
+                placeholder="The full content of this Conch..."
+                required
+                rows={7}
+                style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }}
+              />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
+              <div>
+                <label style={labelStyle}>Tags</label>
                 <input
-                  ref={tagInputRef}
                   type="text"
-                  className="input tag-input"
-                  value={tagQuery}
-                  onChange={(e) => setTagQuery(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      addTag(tagQuery)
-                    }
-                  }}
-                  placeholder="Add tags..."
+                  value={tags}
+                  onChange={e => setTags(e.target.value)}
+                  placeholder="memory, agents, ..."
+                  style={inputStyle}
                 />
-                {showSuggestions && tagSuggestions.length > 0 && (
-                  <div className="tag-suggestions">
-                    {tagSuggestions.map(tag => (
-                      <button
-                        key={tag}
-                        type="button"
-                        className="tag-suggestion"
-                        onClick={() => addTag(tag)}
-                      >
-                        {tag}
-                      </button>
-                    ))}
-                  </div>
+                <span style={hintStyle}>Comma-separated</span>
+              </div>
+              <div>
+                <label style={labelStyle}>Type</label>
+                <select
+                  value={conchType}
+                  onChange={e => setConchType(e.target.value as typeof CONCH_TYPES[number])}
+                  style={inputStyle}
+                >
+                  {CONCH_TYPES.map(t => (
+                    <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Validation badge */}
+            {validation && (
+              <div style={{
+                padding: '10px 14px',
+                borderRadius: 'var(--radius-lg)',
+                fontSize: '13px',
+                marginBottom: '20px',
+                background: validation.valid ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
+                border: `1px solid ${validation.valid ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
+                color: validation.valid ? '#22c55e' : '#ef4444',
+              }}>
+                {validation.valid ? (
+                  '✓ Valid .conch structure'
+                ) : (
+                  <>
+                    <div style={{ fontWeight: 600, marginBottom: '4px' }}>Validation errors:</div>
+                    {validation.errors.map((e, i) => <div key={i}>· {e}</div>)}
+                  </>
                 )}
               </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'space-between', alignItems: 'center' }}>
+              <button
+                type="button"
+                onClick={() => setShowPreview(s => !s)}
+                style={{ padding: '10px 18px', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-muted)', cursor: 'pointer', fontSize: '13px' }}
+              >
+                {showPreview ? 'Hide preview' : 'Show .conch preview'}
+              </button>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => navigate('/')}
+                  style={{ padding: '10px 20px', borderRadius: 'var(--radius-lg)', border: 'none', background: 'var(--color-bg-elevated)', color: 'var(--color-text-muted)', cursor: 'pointer', fontSize: '14px' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting || (!!validation && !validation.valid)}
+                  style={{ padding: '10px 24px', borderRadius: 'var(--radius-lg)', border: 'none', background: 'var(--color-primary)', color: 'white', cursor: submitting ? 'not-allowed' : 'pointer', fontSize: '14px', fontWeight: 500, opacity: submitting ? 0.7 : 1 }}
+                >
+                  {submitting ? 'Creating…' : 'Create Conch'}
+                </button>
+              </div>
             </div>
-            <span className="form-hint">Add tags to help others discover your Conch</span>
-          </div>
+          </form>
 
-          <div className="form-group">
-            <label htmlFor="stateType">Type</label>
-            <select
-              id="stateType"
-              className="input"
-              value={formData.stateType}
-              onChange={(e) => setFormData({ ...formData, stateType: e.target.value })}
-            >
-              <option value="memory">Memory</option>
-              <option value="knowledge">Knowledge</option>
-              <option value="wisdom">Wisdom</option>
-              <option value="artifact">Artifact</option>
-            </select>
-            <span className="form-hint">The category of this Conch</span>
-          </div>
-
-          <div className="form-actions">
-            <button 
-              type="button" 
-              className="btn btn-ghost"
-              onClick={() => navigate('/')}
-              disabled={loading}
-            >
-              Cancel
-            </button>
-            <button 
-              type="submit" 
-              className="btn btn-primary"
-              disabled={loading}
-            >
-              {loading ? 'Creating...' : 'Create Conch'}
-            </button>
-          </div>
-        </form>
+          {/* .conch preview panel */}
+          {showPreview && (
+            <div style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-xl)', padding: '20px', position: 'sticky', top: '100px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-text-muted)' }}>
+                  .conch preview
+                </span>
+                {previewLoading && (
+                  <span style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>updating…</span>
+                )}
+              </div>
+              {preview ? (
+                <pre style={{ fontSize: '11px', overflowX: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: 'var(--color-text-muted)', margin: 0, maxHeight: '520px', overflowY: 'auto' }}>
+                  {JSON.stringify(preview, null, 2)}
+                </pre>
+              ) : (
+                <p style={{ color: 'var(--color-text-muted)', fontSize: '13px' }}>
+                  Start typing to see the generated .conch structure here.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
       </div>
-      
-      <style>{`
-        .create-page {
-          min-height: 100vh;
-          padding-top: 80px;
-          padding-bottom: 60px;
-        }
-        
-        .page-header {
-          margin-bottom: 32px;
-        }
-        
-        .page-header h1 {
-          font-size: 2.5rem;
-          margin-bottom: 8px;
-        }
-        
-        .create-form {
-          max-width: 640px;
-          background: var(--color-bg-card);
-          border: 1px solid var(--color-border);
-          border-radius: var(--radius-xl);
-          padding: 32px;
-        }
-        
-        .form-group {
-          margin-bottom: 24px;
-        }
-        
-        .form-group label {
-          display: block;
-          font-size: 14px;
-          font-weight: 500;
-          color: var(--color-text);
-          margin-bottom: 8px;
-        }
-        
-        .input {
-          width: 100%;
-          padding: 14px 16px;
-          background: var(--color-bg-elevated);
-          border: 1px solid var(--color-border);
-          border-radius: var(--radius-lg);
-          color: var(--color-text);
-          font-size: 16px;
-          transition: all 0.2s;
-        }
-        
-        .input:focus {
-          outline: none;
-          border-color: var(--color-primary);
-          box-shadow: 0 0 0 3px var(--color-primary-muted);
-        }
-        
-        .input::placeholder {
-          color: var(--color-text-muted);
-        }
-        
-        .textarea {
-          resize: vertical;
-          min-height: 120px;
-          font-family: inherit;
-        }
-        
-        .form-hint {
-          display: block;
-          font-size: 12px;
-          color: var(--color-text-muted);
-          margin-top: 6px;
-        }
-        
-        .error-message {
-          display: flex;
-          align-items: flex-start;
-          gap: 12px;
-          padding: 16px;
-          background: rgba(239, 68, 68, 0.1);
-          border: 1px solid rgba(239, 68, 68, 0.3);
-          border-radius: var(--radius-lg);
-          margin-bottom: 24px;
-        }
-        
-        .error-message span {
-          font-size: 18px;
-          font-weight: bold;
-          color: #ef4444;
-        }
-        
-        .error-message p {
-          color: #ef4444;
-          font-size: 14px;
-          margin: 0;
-        }
-        
-        .form-actions {
-          display: flex;
-          justify-content: flex-end;
-          gap: 12px;
-          padding-top: 24px;
-          border-top: 1px solid var(--color-border);
-        }
-        
-        .btn {
-          padding: 12px 24px;
-          border-radius: var(--radius-lg);
-          font-size: 14px;
-          font-weight: 500;
-          cursor: pointer;
-          transition: all 0.2s;
-          border: none;
-        }
-        
-        .btn-primary {
-          background: var(--color-primary);
-          color: white;
-        }
-        
-        .btn-primary:hover:not(:disabled) {
-          background: var(--color-gold);
-        }
-        
-        .btn-primary:disabled {
-          opacity: 0.6;
-          cursor: not-allowed;
-        }
-        
-        .btn-ghost {
-          background: transparent;
-          color: var(--color-text-muted);
-        }
-        
-        .btn-ghost:hover:not(:disabled) {
-          color: var(--color-text);
-          background: var(--color-white-10);
-        }
-        
-        /* Rich text editor */
-        .rich-text-toolbar {
-          display: flex;
-          gap: 4px;
-          padding: 8px;
-          background: var(--color-bg-elevated);
-          border: 1px solid var(--color-border);
-          border-bottom: none;
-          border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-        }
-        
-        .toolbar-btn {
-          padding: 6px 10px;
-          background: transparent;
-          border: none;
-          border-radius: var(--radius-md);
-          color: var(--color-text-muted);
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-        
-        .toolbar-btn:hover {
-          background: var(--color-primary-muted);
-          color: var(--color-primary);
-        }
-        
-        .textarea {
-          border-radius: 0 0 var(--radius-lg) var(--radius-lg);
-        }
-        
-        /* Tags input */
-        .tags-input-container {
-          border: 1px solid var(--color-border);
-          border-radius: var(--radius-lg);
-          background: var(--color-bg-elevated);
-          padding: 8px;
-        }
-        
-        .tags-list {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 8px;
-          margin-bottom: 8px;
-        }
-        
-        .tag {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          padding: 4px 10px;
-          background: var(--color-primary-muted);
-          color: var(--color-primary);
-          border-radius: var(--radius-full);
-          font-size: 13px;
-          font-weight: 500;
-        }
-        
-        .tag-remove {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 16px;
-          height: 16px;
-          padding: 0;
-          background: transparent;
-          border: none;
-          color: var(--color-primary);
-          cursor: pointer;
-          font-size: 14px;
-          line-height: 1;
-          border-radius: 50%;
-        }
-        
-        .tag-remove:hover {
-          background: var(--color-primary);
-          color: white;
-        }
-        
-        .tag-input-wrapper {
-          position: relative;
-        }
-        
-        .tag-input {
-          border: none;
-          background: transparent;
-          padding: 8px 0;
-        }
-        
-        .tag-input:focus {
-          box-shadow: none;
-        }
-        
-        .tag-suggestions {
-          position: absolute;
-          top: 100%;
-          left: 0;
-          right: 0;
-          background: var(--color-bg-card);
-          border: 1px solid var(--color-border);
-          border-radius: var(--radius-lg);
-          box-shadow: var(--shadow-lg);
-          z-index: 10;
-          margin-top: 4px;
-          overflow: hidden;
-        }
-        
-        .tag-suggestion {
-          display: block;
-          width: 100%;
-          padding: 10px 14px;
-          background: transparent;
-          border: none;
-          text-align: left;
-          color: var(--color-text);
-          cursor: pointer;
-          transition: background 0.2s;
-        }
-        
-        .tag-suggestion:hover {
-          background: var(--color-primary-muted);
-          color: var(--color-primary);
-        }
-        
-        /* Light theme */
-        [data-theme="light"] .create-form { background: #FFFFFF; border-color: rgba(0,0,0,0.1); }
-        [data-theme="light"] .form-group label { color: #666; }
-        [data-theme="light"] .input { background: #F5F4F1; border-color: rgba(0,0,0,0.15); color: #1A1A1A; }
-        [data-theme="light"] .tags-input-container { background: #F5F4F1; border-color: rgba(0,0,0,0.15); }
-        [data-theme="light"] .tag { background: rgba(255,111,97,0.15); color: #E85A4A; }
-        [data-theme="light"] .tag-suggestions { background: #FFFFFF; border-color: rgba(0,0,0,0.15); }
-        [data-theme="light"] .toolbar-btn { color: #666; }
-        [data-theme="light"] .toolbar-btn:hover { background: rgba(255,111,97,0.15); color: #E85A4A; }
-        [data-theme="light"] .rich-text-toolbar { background: #F5F4F1; border-color: rgba(0,0,0,0.15); }
-        
-        @media (max-width: 768px) {
-          .page-header h1 {
-            font-size: 1.75rem;
-          }
-          
-          .create-form {
-            padding: 20px;
-          }
-          
-          .form-actions {
-            flex-direction: column-reverse;
-          }
-          
-          .form-actions .btn {
-            width: 100%;
-          }
-        }
-      `}</style>
     </div>
   )
+}
+
+const fieldGroup: React.CSSProperties = { marginBottom: '20px' }
+
+const labelStyle: React.CSSProperties = {
+  display: 'block',
+  fontSize: '13px',
+  fontWeight: 500,
+  marginBottom: '6px',
+  color: 'var(--color-text)',
+}
+
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '10px 14px',
+  background: 'var(--color-bg-elevated)',
+  border: '1px solid var(--color-border)',
+  borderRadius: 'var(--radius-lg)',
+  color: 'var(--color-text)',
+  fontSize: '15px',
+  boxSizing: 'border-box',
+}
+
+const hintStyle: React.CSSProperties = {
+  display: 'block',
+  fontSize: '12px',
+  color: 'var(--color-text-muted)',
+  marginTop: '4px',
 }

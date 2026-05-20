@@ -2,10 +2,6 @@
 // Keys never leave the browser. Identity is key ownership, not accounts.
 
 import * as ed from '@noble/ed25519'
-import { sha512 } from '@noble/hashes/sha512'
-
-// noble/ed25519 needs sha512 wired in for sync helpers
-ed.etc.sha512Sync = (...m: Uint8Array[]) => sha512(...m)
 
 const WALLET_STORAGE_KEY = 'conch_wallet'
 
@@ -17,20 +13,19 @@ export interface Wallet {
 }
 
 export async function generateWallet(displayName = 'Anonymous'): Promise<Wallet> {
-  const privateKeyBytes = ed.utils.randomPrivateKey()
-  const publicKeyBytes = await ed.getPublicKeyAsync(privateKeyBytes)
+  const { secretKey, publicKey } = await ed.keygenAsync()
   return {
-    publicKey: ed.etc.bytesToHex(publicKeyBytes),
-    privateKey: ed.etc.bytesToHex(privateKeyBytes),
+    publicKey: ed.etc.bytesToHex(publicKey),
+    privateKey: ed.etc.bytesToHex(secretKey),
     displayName,
     createdAt: new Date().toISOString(),
   }
 }
 
 export async function signMessage(message: string, privateKeyHex: string): Promise<string> {
-  const privateKeyBytes = ed.etc.hexToBytes(privateKeyHex)
+  const secretKey = ed.etc.hexToBytes(privateKeyHex)
   const msgBytes = new TextEncoder().encode(message)
-  const sig = await ed.signAsync(msgBytes, privateKeyBytes)
+  const sig = await ed.signAsync(msgBytes, secretKey)
   return ed.etc.bytesToHex(sig)
 }
 

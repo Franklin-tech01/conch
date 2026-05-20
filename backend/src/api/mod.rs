@@ -786,6 +786,94 @@ pub async fn search_tags(
     }
 }
 
+// ============ CONCH PARSER / VALIDATOR / BUILDER ============
+
+/// POST /api/conch/parse
+/// Body: { "json": "<raw .conch JSON string>" }
+pub async fn parse_conch_handler(
+    Json(payload): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let raw = payload["json"]
+        .as_str()
+        .ok_or_else(|| error_response("Body must contain a 'json' string field", StatusCode::BAD_REQUEST))?;
+
+    match crate::conch::parse_conch(raw) {
+        Ok(obj) => Ok(success_response(serde_json::to_value(obj).unwrap())),
+        Err(e) => Err(error_response(&e.to_string(), StatusCode::UNPROCESSABLE_ENTITY)),
+    }
+}
+
+/// POST /api/conch/validate
+/// Body: { "json": "<raw .conch JSON string>" }
+/// Returns all validation errors, not just the first.
+pub async fn validate_conch_handler(
+    Json(payload): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let raw = payload["json"]
+        .as_str()
+        .ok_or_else(|| error_response("Body must contain a 'json' string field", StatusCode::BAD_REQUEST))?;
+
+    let obj = crate::conch::parse_conch(raw)
+        .map_err(|e| error_response(&e.to_string(), StatusCode::UNPROCESSABLE_ENTITY))?;
+
+    match crate::conch::validate_conch(&obj) {
+        Ok(()) => Ok(success_response(serde_json::json!({ "valid": true, "errors": [] }))),
+        Err(errors) => {
+            let error_strs: Vec<String> = errors.iter().map(|e| e.to_string()).collect();
+            Ok(Json(serde_json::json!({
+                "success": true,
+                "data": { "valid": false, "errors": error_strs }
+            })))
+        }
+    }
+}
+
+/// POST /api/conch/new
+/// Body: { "creator": "<pubkey_hex>", "fields": [...], "data": {...} }
+/// Returns a freshly built ConchObject ready to store or sign.
+pub async fn new_conch_handler(
+    headers: axum::http::HeaderMap,
+    Json(payload): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let creator = payload["creator"]
+        .as_str()
+        .map(String::from)
+        .or_else(|| get_current_user(&headers))
+        .unwrap_or_else(|| "anonymous".to_string());
+
+    let mut builder = crate::conch::ConchBuilder::new(&creator);
+
+    if let Some(fields) = payload["fields"].as_array() {
+        for f in fields {
+            let name = f["name"].as_str().unwrap_or("").to_string();
+            let type_str = f["type"].as_str().unwrap_or("string");
+            let required = f["required"].as_bool().unwrap_or(false);
+            let description = f["description"].as_str().unwrap_or("").to_string();
+
+            let field_type = match type_str {
+                "number" => crate::conch::FieldType::Number,
+                "boolean" => crate::conch::FieldType::Boolean,
+                "array" => crate::conch::FieldType::Array,
+                "object" => crate::conch::FieldType::Object,
+                _ => crate::conch::FieldType::String,
+            };
+
+            if !name.is_empty() {
+                builder = builder.field(name, field_type, required, description);
+            }
+        }
+    }
+
+    if let Some(data_obj) = payload["data"].as_object() {
+        for (k, v) in data_obj {
+            builder = builder.data(k.clone(), v.clone());
+        }
+    }
+
+    let obj = builder.build();
+    Ok(success_response(serde_json::to_value(obj).unwrap()))
+}
+
 /// Create router with all routes
 pub fn create_router() -> Router<Arc<AppState>> {
     Router::new()
@@ -818,4 +906,7 @@ pub fn create_router() -> Router<Arc<AppState>> {
         .route("/notifications", get(get_notifications))
         .route("/notifications/:id/read", put(mark_notification_read))
         .route("/tags/search", get(search_tags))
+        .route("/conch/parse", post(parse_conch_handler))
+        .route("/conch/validate", post(validate_conch_handler))
+        .route("/conch/new", post(new_conch_handler))
 }

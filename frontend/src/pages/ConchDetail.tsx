@@ -6,6 +6,7 @@ import { fetchConch, fetchLineage, fetchNeighborhood } from '../lib/api'
 import { useSSE } from '../hooks/useSSE'
 import Loader from '../components/Loader'
 import type { Conch } from '../lib/types'
+import { shortKey } from '../lib/wallet'
 
 export default function ConchDetail() {
   const { id } = useParams<{ id: string }>()
@@ -83,7 +84,9 @@ export default function ConchDetail() {
           <div className="conch-header-content">
             <span className="era-badge large">Era {conch.era}</span>
             <h1>{conch.intent || 'Untitled Conch'}</h1>
-            <p className="owner">by {conch.owner}</p>
+            <p className="owner" title={conch.owner}>
+              by {conch.owner && conch.owner.length > 16 ? shortKey(conch.owner) : conch.owner}
+            </p>
           </div>
         </header>
 
@@ -248,6 +251,12 @@ export default function ConchDetail() {
         
         .conch-header-content .owner {
           color: var(--color-text-muted);
+          font-family: monospace;
+          font-size: 13px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          max-width: 100%;
         }
         
         .detail-tabs {

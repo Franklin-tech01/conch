@@ -114,6 +114,7 @@ export interface CreateConchRequest {
   state: Record<string, unknown>
   story: string
   intent: string
+  owner?: string
   lineage?: string[]
   permissions?: Permissions
 }

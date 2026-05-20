@@ -7,6 +7,7 @@ import { fetchConches } from '../lib/api'
 import { useSSE } from '../hooks/useSSE'
 import { GridSkeleton } from '../components/Loader'
 import type { Conch } from '../lib/types'
+import { shortKey } from '../lib/wallet'
 
 // Icons
 const FilterIcon = () => (
@@ -366,7 +367,9 @@ export default function ExplorePage() {
                     </div>
                     <p className="conch-story">{conch.story?.substring(0, 120) || 'No description'}...</p>
                     <div className="conch-footer">
-                      <span className="conch-author">by {conch.owner}</span>
+                      <span className="conch-author" title={conch.owner}>
+                        by {conch.owner && conch.owner.length > 16 ? shortKey(conch.owner) : conch.owner}
+                      </span>
                       <span className="conch-date">{new Date(conch.created_at).toLocaleDateString()}</span>
                     </div>
                   </Link>

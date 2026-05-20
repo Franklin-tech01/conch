@@ -3,6 +3,7 @@
 
 mod api;
 mod auth;
+mod conch;
 mod db;
 mod events;
 mod models;
@@ -101,6 +102,9 @@ async fn main() {
         .route("/api/conches/:id/links", post(api::create_link))
         .route("/api/links", get(api::get_all_links))
         .route("/api/graph", get(api::get_graph_data))
+        .route("/api/conch/parse", post(api::parse_conch_handler))
+        .route("/api/conch/validate", post(api::validate_conch_handler))
+        .route("/api/conch/new", post(api::new_conch_handler))
         .route("/ws", get(websocket::ws_handler))
         .route("/events", get(websocket::events_handler))
         .with_state(std::sync::Arc::new(app_state));

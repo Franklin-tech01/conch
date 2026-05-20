@@ -167,7 +167,7 @@ export function useConches(initialPage = 1, pageSize = 20) {
       }
       
       const data = JSON.parse(text)
-      let conchList = []
+      let conchList: Conch[] = []
       
       if (data && typeof data === 'object' && 'success' in data) {
         conchList = data.data || []

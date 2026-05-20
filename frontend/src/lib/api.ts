@@ -12,10 +12,8 @@ import type {
 } from './types'
 import { loadWallet } from './wallet'
 
-const API_BASE = import.meta.env?.VITE_API_URL || '/api'
-
-// Development mode flag
-const IS_DEVELOPMENT = import.meta.env?.DEV || false
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const API_BASE: string = ((import.meta as any).env?.VITE_API_URL) ?? '/api'
 
 // Mock data for when backend is unavailable
 const MOCK_CONCHES: Conch[] = [
@@ -105,23 +103,8 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   }
 }
 
-// Auth
-export async function login(email: string, password: string): Promise<TokenResponse> {
-  return request<TokenResponse>('/auth/login', {
-    method: 'POST',
-    body: JSON.stringify({ email, password }),
-  })
-}
-
-export async function register(username: string, email: string, password: string): Promise<TokenResponse> {
-  return request<TokenResponse>('/auth/register', {
-    method: 'POST',
-    body: JSON.stringify({ username, email, password }),
-  })
-}
-
 export function logout() {
-  localStorage.removeItem('conch_token')
+  localStorage.removeItem('conch_wallet')
 }
 
 // Conches - the backend returns array directly
@@ -544,6 +527,62 @@ export async function searchConches(filters: SearchFilters): Promise<Conch[]> {
     console.warn('Search failed:', error)
     return []
   }
+}
+
+// ============ CONCH PARSER / VALIDATOR / BUILDER ============
+
+export interface ConchObject {
+  meta: {
+    id: string
+    version: number
+    created_at: string
+    creator: string
+    conch_version: string
+  }
+  schema: {
+    version: number
+    fields: Record<string, { type: string; required: boolean; description: string }>
+  }
+  data: Record<string, unknown>
+  permissions: { read: string[]; write: string[]; admin: string[] }
+  history: Array<{ timestamp: string; action: string; actor: string; diff: unknown }>
+}
+
+export interface ConchFieldDef {
+  name: string
+  type: 'string' | 'number' | 'boolean' | 'array' | 'object'
+  required: boolean
+  description: string
+}
+
+export interface ValidationResult {
+  valid: boolean
+  errors: string[]
+}
+
+export async function parseConch(json: string): Promise<ConchObject> {
+  return request<ConchObject>('/conch/parse', {
+    method: 'POST',
+    body: JSON.stringify({ json }),
+  })
+}
+
+export async function validateConch(json: string): Promise<ValidationResult> {
+  return request<ValidationResult>('/conch/validate', {
+    method: 'POST',
+    body: JSON.stringify({ json }),
+  })
+}
+
+export async function newConch(
+  creator: string,
+  fields: ConchFieldDef[],
+  data: Record<string, unknown>,
+): Promise<ConchObject> {
+  return request<ConchObject>('/conch/new', {
+    method: 'POST',
+    body: JSON.stringify({ creator, fields, data }),
+  })
 }
 
 // ============ AI EVOLUTION SUGGESTIONS ============
