@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { newConch, validateConch, createConch, type ConchObject, type ValidationResult } from '../lib/api'
+import { newConch, validateConch, writeConch, createConch, type ConchObject, type ValidationResult } from '../lib/api'
 import { useConchStore } from '../lib/store'
 
 const CONCH_TYPES = ['memory', 'knowledge', 'wisdom', 'artifact'] as const
@@ -18,8 +18,10 @@ export default function CreateConch() {
   const [showPreview, setShowPreview] = useState(false)
 
   const [preview, setPreview] = useState<ConchObject | null>(null)
+  const [canonical, setCanonical] = useState<string | null>(null)
   const [validation, setValidation] = useState<ValidationResult | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewTab, setPreviewTab] = useState<'object' | 'canonical'>('object')
 
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -56,9 +58,16 @@ export default function CreateConch() {
         setPreview(obj)
         const result = await validateConch(JSON.stringify(obj))
         setValidation(result)
+        if (result.valid) {
+          const raw = await writeConch(obj)
+          setCanonical(raw)
+        } else {
+          setCanonical(null)
+        }
       } catch {
         setPreview(null)
         setValidation(null)
+        setCanonical(null)
       } finally {
         setPreviewLoading(false)
       }
@@ -220,21 +229,47 @@ export default function CreateConch() {
           {showPreview && (
             <div style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-xl)', padding: '20px', position: 'sticky', top: '100px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-text-muted)' }}>
-                  .conch preview
-                </span>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewTab('object')}
+                    style={{ padding: '4px 10px', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border)', background: previewTab === 'object' ? 'var(--color-primary-muted)' : 'transparent', color: previewTab === 'object' ? 'var(--color-primary)' : 'var(--color-text-muted)', cursor: 'pointer', fontSize: '12px', fontWeight: 500 }}
+                  >
+                    ConchObject
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewTab('canonical')}
+                    disabled={!canonical}
+                    style={{ padding: '4px 10px', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border)', background: previewTab === 'canonical' ? 'var(--color-primary-muted)' : 'transparent', color: previewTab === 'canonical' ? 'var(--color-primary)' : 'var(--color-text-muted)', cursor: canonical ? 'pointer' : 'not-allowed', fontSize: '12px', fontWeight: 500, opacity: canonical ? 1 : 0.4 }}
+                  >
+                    Canonical
+                  </button>
+                </div>
                 {previewLoading && (
                   <span style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>updating…</span>
                 )}
               </div>
-              {preview ? (
-                <pre style={{ fontSize: '11px', overflowX: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: 'var(--color-text-muted)', margin: 0, maxHeight: '520px', overflowY: 'auto' }}>
-                  {JSON.stringify(preview, null, 2)}
-                </pre>
+              {previewTab === 'object' ? (
+                preview ? (
+                  <pre style={{ fontSize: '11px', overflowX: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: 'var(--color-text-muted)', margin: 0, maxHeight: '520px', overflowY: 'auto' }}>
+                    {JSON.stringify(preview, null, 2)}
+                  </pre>
+                ) : (
+                  <p style={{ color: 'var(--color-text-muted)', fontSize: '13px' }}>
+                    Start typing to see the generated .conch structure here.
+                  </p>
+                )
               ) : (
-                <p style={{ color: 'var(--color-text-muted)', fontSize: '13px' }}>
-                  Start typing to see the generated .conch structure here.
-                </p>
+                canonical ? (
+                  <pre style={{ fontSize: '11px', overflowX: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: 'var(--color-text-muted)', margin: 0, maxHeight: '520px', overflowY: 'auto' }}>
+                    {canonical}
+                  </pre>
+                ) : (
+                  <p style={{ color: 'var(--color-text-muted)', fontSize: '13px' }}>
+                    Available after validation passes.
+                  </p>
+                )
               )}
             </div>
           )}

@@ -105,6 +105,7 @@ async fn main() {
         .route("/api/conch/parse", post(api::parse_conch_handler))
         .route("/api/conch/validate", post(api::validate_conch_handler))
         .route("/api/conch/new", post(api::new_conch_handler))
+        .route("/api/conch/write", post(api::write_conch_handler))
         .route("/ws", get(websocket::ws_handler))
         .route("/events", get(websocket::events_handler))
         .with_state(std::sync::Arc::new(app_state));

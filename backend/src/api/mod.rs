@@ -828,6 +828,23 @@ pub async fn validate_conch_handler(
     }
 }
 
+/// POST /api/conch/write
+/// Body: { "conch": <ConchObject> }
+/// Validates and serializes a ConchObject to canonical deterministic JSON.
+pub async fn write_conch_handler(
+    Json(payload): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let conch: crate::conch::ConchObject = serde_json::from_value(
+        payload["conch"].clone(),
+    )
+    .map_err(|e| error_response(&format!("Invalid conch object: {e}"), StatusCode::BAD_REQUEST))?;
+
+    match crate::conch::write_conch(&conch) {
+        Ok(raw) => Ok(success_response(serde_json::json!({ "raw": raw }))),
+        Err(e) => Err(error_response(&e.to_string(), StatusCode::UNPROCESSABLE_ENTITY)),
+    }
+}
+
 /// POST /api/conch/new
 /// Body: { "creator": "<pubkey_hex>", "fields": [...], "data": {...} }
 /// Returns a freshly built ConchObject ready to store or sign.
@@ -909,4 +926,5 @@ pub fn create_router() -> Router<Arc<AppState>> {
         .route("/conch/parse", post(parse_conch_handler))
         .route("/conch/validate", post(validate_conch_handler))
         .route("/conch/new", post(new_conch_handler))
+        .route("/conch/write", post(write_conch_handler))
 }

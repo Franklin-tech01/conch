@@ -585,6 +585,14 @@ export async function newConch(
   })
 }
 
+export async function writeConch(conch: ConchObject): Promise<string> {
+  const result = await request<{ raw: string }>('/conch/write', {
+    method: 'POST',
+    body: JSON.stringify({ conch }),
+  })
+  return result.raw
+}
+
 // ============ AI EVOLUTION SUGGESTIONS ============
 
 export interface EvolutionSuggestion {

@@ -37,6 +37,9 @@ pub enum ConchError {
 
     /// A history entry is missing required fields
     InvalidHistoryEntry(String),
+
+    /// serde_json serialization failed
+    SerializationError(String),
 }
 
 impl fmt::Display for ConchError {
@@ -64,6 +67,7 @@ impl fmt::Display for ConchError {
                 write!(f, "History entries must be in ascending timestamp order")
             }
             ConchError::InvalidHistoryEntry(msg) => write!(f, "Invalid history entry: {msg}"),
+            ConchError::SerializationError(msg) => write!(f, "Serialization error: {msg}"),
         }
     }
 }

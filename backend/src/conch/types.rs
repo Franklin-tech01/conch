@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 pub const SUPPORTED_VERSION: &str = "0.1";
 
 /// The complete, parsed .conch object. All five sections are required.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ConchObject {
     pub meta: ConchMeta,
     pub schema: ConchSchema,
@@ -16,7 +16,7 @@ pub struct ConchObject {
 }
 
 /// Provenance and identity metadata
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ConchMeta {
     pub id: String,
     pub version: u32,
@@ -26,14 +26,14 @@ pub struct ConchMeta {
 }
 
 /// Schema definition — what fields the data section may/must contain
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ConchSchema {
     pub version: u32,
     pub fields: BTreeMap<String, SchemaField>,
 }
 
 /// Declaration for a single schema field
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SchemaField {
     #[serde(rename = "type")]
     pub field_type: FieldType,
@@ -77,7 +77,7 @@ impl FieldType {
 
 /// Who can read, write, or administer a Conch.
 /// "*" means unrestricted; otherwise entries are hex public keys.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ConchPermissions {
     pub read: Vec<String>,
     pub write: Vec<String>,
@@ -85,7 +85,7 @@ pub struct ConchPermissions {
 }
 
 /// One entry in the immutable audit trail
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ConchHistoryEntry {
     pub timestamp: String,
     pub action: String,
