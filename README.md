@@ -1,3 +1,151 @@
-# conchH
-# conch
-# conch
+# CONCH
+
+A portable trust container for agents and humans.
+
+CONCH is a structured digital object format and platform. Every conch carries its own identity, schema, data, permissions, and audit trail — self-describing and self-validating. You don't trust the server that sent it. You trust the object itself.
+
+---
+
+## What is a Conch?
+
+A conch is a JSON object with five required sections:
+
+```json
+{
+  "meta":        { "id", "version", "created_at", "creator", "conch_version" },
+  "schema":      { "version", "fields": { "field_name": { "type", "required", "description" } } },
+  "data":        { "field_name": value },
+  "permissions": { "read": [...], "write": [...], "admin": [...] },
+  "history":     [{ "timestamp", "action", "actor", "diff" }]
+}
+```
+
+All five sections are required. Data must conform to the schema. Missing fields, wrong types, and undeclared fields are all rejected. The canonical serialized form is deterministic — same object, same bytes, every time, on every machine.
+
+---
+
+## Stack
+
+| Layer    | Technology                          |
+| -------- | ----------------------------------- |
+| Backend  | Rust + Axum                         |
+| Database | PostgreSQL 16                       |
+| Events   | Redis 7 + SSE + WebSocket           |
+| Frontend | React 18 + TypeScript + Vite        |
+| Identity | Ed25519 keypairs (`@noble/ed25519`) |
+
+Backend runs on port `3000` (container) / `3001` (host). Frontend runs on port `5173` and proxies `/api`, `/ws`, `/events` to the backend.
+
+---
+
+## Identity
+
+There are no usernames or passwords. Your Ed25519 public key is your identity. Every request carries an `X-Public-Key` header. The wallet lives in the browser (`frontend/src/lib/wallet.ts`) and never leaves the client.
+
+---
+
+## Getting Started
+
+**Prerequisites:** Docker Desktop, Node.js 18+
+
+**Start the backend:**
+
+```bash
+docker compose up -d
+```
+
+This starts Postgres (5432), Redis (6379), and the Rust API (3001).
+
+**Start the frontend:**
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open [http://localhost:5173](http://localhost:5173).
+
+**Rebuild after backend changes:**
+
+```bash
+docker compose up -d --build
+```
+
+---
+
+## API Reference
+
+### Core Conch Endpoints
+
+| Method | Path                  | Description                                        |
+| ------ | --------------------- | -------------------------------------------------- |
+| `POST` | `/api/conch/new`      | Build a fresh ConchObject                          |
+| `POST` | `/api/conch/validate` | Validate a JSON string, returns all errors         |
+| `POST` | `/api/conch/write`    | Serialize a ConchObject to canonical JSON          |
+| `POST` | `/api/conch/parse`    | Parse a raw JSON string into a ConchObject         |
+
+### Conch Storage
+
+| Method   | Path                       | Description          |
+| -------- | -------------------------- | -------------------- |
+| `GET`    | `/api/conches`             | List conches         |
+| `POST`   | `/api/conches`             | Create a conch       |
+| `GET`    | `/api/conches/:id`         | Get a conch          |
+| `PUT`    | `/api/conches/:id`         | Update a conch       |
+| `DELETE` | `/api/conches/:id`         | Delete a conch       |
+| `GET`    | `/api/conches/:id/links`   | Get linked conches   |
+| `POST`   | `/api/conches/:id/links`   | Link two conches     |
+
+### Other
+
+| Method | Path          | Description                     |
+| ------ | ------------- | ------------------------------- |
+| `GET`  | `/api/graph`  | All conches + links for graph   |
+| `GET`  | `/api/search` | Search conches                  |
+| `GET`  | `/health`     | Health check                    |
+| `WS`   | `/ws`         | WebSocket for real-time updates |
+| `GET`  | `/events`     | SSE stream                      |
+
+---
+
+## Backend Structure
+
+```text
+backend/src/
+├── conch/
+│   ├── types.rs      # ConchObject, ConchMeta, ConchSchema, etc.
+│   ├── parser.rs     # parse_conch(json) → ConchObject
+│   ├── validator.rs  # validate_conch(&obj) → Result<(), Vec<ConchError>>
+│   ├── builder.rs    # ConchBuilder fluent API
+│   ├── writer.rs     # write_conch(&obj) → canonical JSON string
+│   └── error.rs      # ConchError enum
+├── api/mod.rs        # All HTTP handlers
+├── db/mod.rs         # Database queries
+├── auth/mod.rs       # Ed25519 identity
+├── websocket/mod.rs  # WS + SSE handlers
+└── main.rs           # Router + server bootstrap
+```
+
+---
+
+## Roadmap
+
+| Milestone       | Status  | Description                                    |
+| --------------- | ------- | ---------------------------------------------- |
+| M1 — Parser     | Done    | Parse, validate, build ConchObjects            |
+| M2 — Writer     | Done    | Canonical serialization + round-trip guarantee |
+| M3 — Storage    | Planned | Store validated ConchObjects in Postgres       |
+| M4 — Signatures | Planned | Ed25519 signing over canonical bytes           |
+| M5 — Flesh      | Planned | Private encrypted memory inside a conch        |
+| M6 — Pearl      | Planned | Immutable provenance history                   |
+
+---
+
+## The Three Layers
+
+| Layer | Name      | Description                                             |
+| ----- | --------- | ------------------------------------------------------- |
+| Shell | Public    | Structured meaning — readable by anyone with permission |
+| Flesh | Private   | Encrypted memory — only decryptable by the holder       |
+| Pearl | Immutable | Provenance trail — cryptographically sealed history     |
